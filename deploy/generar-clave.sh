@@ -23,10 +23,15 @@ chmod 600 "$PRIV" "$PUB"
 # si su dueño no es 1000, hace falta que sea legible. Se deja 644 SOLO si el uid del host no es 1000.
 if [ "$(id -u)" != "1000" ]; then chmod 644 "$PRIV"; echo "Aviso: uid del host != 1000; $PRIV queda 644 para que lo lea el contenedor (el directorio secrets/ es 700)." >&2; fi
 
-# kid = huella JWK (RFC 7638, SHA-256 base64url), igual a la que calcula el servidor si no se fija SSO_KID.
-# Exponente 65537 ("AQAB", el que usa openssl por defecto).
-N=$(openssl rsa -pubin -in "$PUB" -modulus -noout | sed 's/^Modulus=//' | xxd -r -p | openssl base64 -A | tr '+/' '-_' | tr -d '=')
-KID=$(printf '{"e":"AQAB","kty":"RSA","n":"%s"}' "$N" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
 echo "Clave generada: $PRIV (RSA $BITS, modo 600). Pública: $PUB"
-echo "kid (huella JWK): $KID"
-echo "Confirme el kid real tras levantar el portal: curl -s https://portal.ecologia.misiones.gob.ar/.well-known/jwks.json"
+
+# kid = huella JWK (RFC 7638, SHA-256 base64url), igual a la que calcula el servidor si no se fija SSO_KID.
+# Es solo informativo: si falta xxd se omite (el kid real se ve en el JWKS una vez levantado el portal).
+if command -v xxd >/dev/null; then
+  N=$(openssl rsa -pubin -in "$PUB" -modulus -noout | sed 's/^Modulus=//' | xxd -r -p | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+  KID=$(printf '{"e":"AQAB","kty":"RSA","n":"%s"}' "$N" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+  echo "kid (huella JWK): $KID"
+else
+  echo "Aviso: falta xxd (apt install xxd); no se calcula el kid. Se ve igual en el JWKS del portal." >&2
+fi
+echo "Confirmá el kid real tras levantar el portal: curl -s https://ecodatos.ecologia.misiones.gob.ar/portal/.well-known/jwks.json"
