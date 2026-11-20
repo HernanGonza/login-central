@@ -1,0 +1,17 @@
+{
+  "name": "login-central",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "web",
+    "kit/node",
+    "sistema-falso"
+  ],
+  "scripts": {
+    "vectores": "node docs/sso/vectores/generar.mjs"
+  },
+  "devDependencies": {
+    "jose": "^5.10.0"
+  }
+}
