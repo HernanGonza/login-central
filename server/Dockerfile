@@ -3,7 +3,11 @@
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+# --ignore-scripts: el script de instalación de argon2 intenta compilar con node-gyp (no hay Python ni compilador en la imagen);
+# no hace falta: el paquete trae el binario precompilado y lo carga en tiempo de ejecución. El `node -e` de abajo falla el build si no carga.
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+ && node -e "require('argon2').hash('x').then(()=>console.log('argon2 OK'))" \
+ && npm cache clean --force
 
 FROM node:20-bookworm-slim
 ENV NODE_ENV=production
