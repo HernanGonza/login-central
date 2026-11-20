@@ -1,0 +1,8 @@
+{
+  "name": "sistema-falso",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node src/servidor.mjs", "test": "node --test test/*.test.mjs" },
+  "dependencies": { "@ecologia/sso-kit-node": "*",
+    "express": "^4.21.0" }
+}

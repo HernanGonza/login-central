@@ -37,6 +37,14 @@ docs/sso/        este contrato y vectores/
 
 Los motivos se devuelven al código llamador, **nunca** al cliente HTTP (el cliente solo ve 401/403).
 
+## 2b. Reglas adicionales de verificación (decididas 2026-11-20, tras los kits y la revisión de seguridad)
+- `aud` debe ser un **string** igual al id del sistema (no se acepta arreglo).
+- `iat` numérico y no futuro (tolerancia 60 s). Vida máxima `exp - iat` = **120 s** (60 s de vida + 60 s de tolerancia); un pase real del emisor dura 60 s. Estos fallos devuelven el motivo `exp`.
+- Motivo interno `usuario` (paso 8): correo sin usuario, inactivo o **duplicado en la base del sistema** → en consulta `{"acceso":false}`, en ingreso 403. Nunca se informa el motivo al cliente.
+- JWKS solo por **https**, salvo localhost/127.0.0.1/::1 o bandera explícita de desarrollo (`permitirHttp` / `SSO_PERMITIR_HTTP=1`). Falla de descarga del JWKS → motivo `firma`; refresco ante `kid` desconocido con enfriamiento (30 s en kit-node, 10 s en kit-php).
+- jti: el almacén debe ser compartido entre procesos/servidores en producción (kit-node exige `jtiStore` explícito con `NODE_ENV=production`; kit-php exige `SSO_ESTADO_DIR` con modo 0700 y dueño correcto).
+- Códigos: `/sso/acceso` pase inválido → 401; `/sso/login` cualquier fallo → 403 (nunca 401, nunca stack ni rutas), todas las respuestas `Cache-Control: no-store`. El enlace "sin acceso" apunta al portal **sin** `?volver` (evita bucles).
+
 ## 3. Rutas que implementa cada sistema
 `GET /sso/acceso` (servidor a servidor), `Authorization: Bearer <pase use=acceso>`:
 - 200 `{"acceso":true,"rol":"admin"}` (rol opcional) · 200 `{"acceso":false}` (pase válido, correo sin usuario/inactivo) · 401 pase inválido/vencido/ausente. Nunca responde sin pase válido.
@@ -69,8 +77,13 @@ type Empleado = { id: string; email: string; nombre: string; apellido: string; a
 ```
 Solo lectura. Implementación PRUEBA: Postgres local con tabla `empleados` (hash argon2id). Pendiente: algoritmo de hash real y columnas reales.
 
-## 6. Estilo visual
-Fondo #f4f7f4, verde #2f6b4a, tipografía Figtree. Ingreso: panel verde izquierdo "Todos los sistemas del Ministerio, con un solo ingreso." y a la derecha "Ingresar" / "Con tu cuenta del Ministerio.". Botonera: "Hola, [Nombre]", "Estos son tus sistemas", grilla de tarjetas con ícono, nombre y descripción.
+## 6. Estilo visual (actualizado 2026-11-20 con el BRANDBOOK 2024 del Ministerio, que reemplaza a Figtree y #2f6b4a)
+Fuente de verdad: `BRANDBOOK 2024 - Ministerio de Ecología y RNR de Misiones.pdf` (raíz del repo).
+- Tipografía: **Oak Sans** (Light/Regular/Bold). Fuentes en `dia-gis/public/fonts/` y `EcoAlerta/assets/fonts/` (proyectos hermanos): copiarlas a `web/`, sin CDN.
+- Paleta digital (escala de verdes y beige): verde oscuro ~#213428, **verde institucional #3E6C51**, oliva ~#6F7F2A, verde claro ~#CBD6A4, amarillo ~#EFE36B, **beige de fondo #F5F3EF**. Flor del Lapacho: rosa #F5A5BF y magenta #C8346C (solo en el símbolo).
+- Marca: flor del Lapacho + logotipo "ECOLOGÍA MISIONES" (versión símbolo+logotipo). **Respetar reglas de uso (p.14)**: sin cambiar colores, sin contornos, sin rotar ni deformar, sin fondos que resten legibilidad; área de seguridad alrededor; tamaño mínimo (p.13). Footer/acompañamiento con la marca "MISIONES" del Gobierno.
+- Key visual (p.17): patrón de flores (gris/verde/rosado) para fondos; tres flores como acento. Tono institucional, no comercial.
+- Ingreso: panel verde (#3E6C51) a la izquierda con el patrón de flores y "Todos los sistemas del Ministerio, con un solo ingreso."; a la derecha el formulario ("Ingresar", "Con tu cuenta del Ministerio.") sobre beige. Botonera: "Hola, [Nombre]", "Estos son tus sistemas" y grilla de tarjetas con ícono, nombre y descripción.
 
 ## 7. Vectores de prueba
 `docs/sso/vectores/` (regenerables con `npm run vectores`): `jwks.PRUEBA.json`, `clave-privada.PRUEBA.pem`, `vectores.PRUEBA.json`. Reloj de pruebas fijo: `ahora` del JSON (inyectable en cada kit). Casos: valido_login, valido_acceso, vencido, dentro_tolerancia, iss_ajeno, aud_ajeno, firma_ajena, kid_desconocido, use_cambiado, alg_none, hs256, jti_repetido, email_mayusculas, basura.

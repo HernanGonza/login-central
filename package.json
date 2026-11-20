@@ -9,7 +9,8 @@
     "sistema-falso"
   ],
   "scripts": {
-    "vectores": "node docs/sso/vectores/generar.mjs"
+    "vectores": "node docs/sso/vectores/generar.mjs",
+    "dev": "node scripts/dev.mjs"
   },
   "devDependencies": {
     "jose": "^5.10.0"

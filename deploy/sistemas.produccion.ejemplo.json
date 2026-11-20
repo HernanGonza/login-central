@@ -1,0 +1,11 @@
+[
+  {
+    "id": "wiki",
+    "nombre": "Wiki",
+    "descripcion": "Documentación y conocimiento del Ministerio",
+    "icono": "book",
+    "url_login": "https://ecodatos.ecologia.misiones.gob.ar/wiki/sso/login",
+    "url_acceso": "https://ecodatos.ecologia.misiones.gob.ar/wiki/sso/acceso",
+    "siempre_visible": true
+  }
+]

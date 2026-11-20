@@ -1,0 +1,23 @@
+{
+  "name": "@login-central/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node test/run.mjs",
+    "seed": "node src/seed.js",
+    "usuarios:crear": "node src/cli/usuarios-crear.js",
+    "usuarios:listar": "node src/cli/usuarios-listar.js",
+    "usuarios:desactivar": "node src/cli/usuarios-desactivar.js",
+    "sistemas:cargar": "node src/cli/sistemas-cargar.js",
+    "sistemas:listar": "node src/cli/sistemas-listar.js"
+  },
+  "dependencies": {
+    "altcha-lib": "^2.9.0",
+    "argon2": "^0.45.2",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.3.0",
+    "jose": "^5.10.0",
+    "pg": "^8.23.1"
+  }
+}

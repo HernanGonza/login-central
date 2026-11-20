@@ -1,0 +1,6 @@
+node_modules
+dist
+mock
+.env
+.env.*
+*.pem

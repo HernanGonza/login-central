@@ -1,0 +1,115 @@
+# Portal de ingreso único (login-central). Despliegue: deploy/DESPLIEGUE.md
+#   cp .env.example .env  &&  deploy/generar-clave.sh  &&  docker compose up -d --build
+name: portal
+
+services:
+  portal-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?definir POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:?definir POSTGRES_DB en .env}
+    volumes:
+      - portal_db:/var/lib/postgresql/data
+    networks:
+      - portal_net
+    # Sin "ports": la base solo es alcanzable desde portal_net.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  portal-api:
+    build:
+      context: ./server
+    restart: unless-stopped
+    depends_on:
+      portal-db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@portal-db:5432/${POSTGRES_DB}
+      # Bajo ecodatos el iss incluye el prefijo: JWKS público = ${SSO_ISSUER}/.well-known/jwks.json
+      SSO_ISSUER: ${SSO_ISSUER:-https://ecodatos.ecologia.misiones.gob.ar/portal}
+      PORTAL_URL: ${PORTAL_URL:-https://ecodatos.ecologia.misiones.gob.ar/portal/}
+      # Prefijo público ('/portal' bajo ecodatos, '/' en subdominio propio): la cookie de sesión usa Path=<prefijo>.
+      PORTAL_BASE_PATH: ${PORTAL_BASE_PATH:-/portal}
+      # Clave privada de firma: archivo montado de solo lectura (ver "volumes"). Nunca en el repo ni en la imagen.
+      SSO_PRIVATE_KEY_PATH: /run/secrets/sso-private.pem
+      SSO_KID: ${SSO_KID:-}
+      ALTCHA_HMAC_KEY: ${ALTCHA_HMAC_KEY:?definir ALTCHA_HMAC_KEY en .env}
+      ALTCHA_MAXNUMBER: ${ALTCHA_MAXNUMBER:-1000000}
+      PERSONAL_REGISTRO_URL: ${PERSONAL_REGISTRO_URL:-}
+      PERSONAL_RECUPERO_URL: ${PERSONAL_RECUPERO_URL:-}
+      # Adaptador de Personal de PRUEBA (provisorio): producción lo rechaza salvo este permiso explícito.
+      # Al pasar a Personal real: PERSONAL_ADAPTER=<real> y quitar PORTAL_PERMITIR_ADAPTADOR_PRUEBA.
+      PERSONAL_ADAPTER: ${PERSONAL_ADAPTER:-prueba}
+      PORTAL_PERMITIR_ADAPTADOR_PRUEBA: ${PORTAL_PERMITIR_ADAPTADOR_PRUEBA:-1}
+      PERSONAL_DATABASE_URL: ${PERSONAL_DATABASE_URL:-}
+      COOKIE_SECURE: "true"
+      # Saltos de proxy entre el cliente y portal-api: nginx de ecodatos + portal-web = 2.
+      # Si hay otro proxy delante (p. ej. Caddy), sumarlo. Ver DESPLIEGUE.md (troubleshooting).
+      TRUST_PROXY: ${TRUST_PROXY:-3}
+    volumes:
+      - ./secrets/sso-private.pem:/run/secrets/sso-private.pem:ro
+      # Archivos de sistemas para "npm run sistemas:cargar -- /deploy/<archivo>.json"
+      - ./deploy:/deploy:ro
+    networks:
+      - portal_net
+      # Descomentar SOLO si portal-api debe alcanzar a la Wiki por la red de ecodatos (consulta de rol/tarjetas).
+      # Por defecto sale por la red de Docker normal (internet / hairpin, ver extra_hosts).
+      # - supabase
+    # Hairpin: si la VM no puede alcanzar su propia IP pública (NAT sin hairpin), la consulta HTTPS a
+    # https://ecodatos.ecologia.misiones.gob.ar/wiki/sso/acceso falla. host-gateway apunta el nombre al host
+    # (donde escucha el Caddy/nginx de ecodatos). Descomentar solo si hace falta (ver DESPLIEGUE.md).
+    # extra_hosts:
+    #   - "ecodatos.ecologia.misiones.gob.ar:host-gateway"
+    # Sin "ports": solo portal-web la alcanza.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/.well-known/jwks.json').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  portal-web:
+    build:
+      context: ./web
+      args:
+        # Prefijo del build del front (con barra final). Debe coincidir con PORTAL_BASE_PATH.
+        VITE_BASE: ${VITE_BASE:-/portal/}
+    restart: unless-stopped
+    depends_on:
+      portal-api:
+        condition: service_healthy
+    environment:
+      API_UPSTREAM: http://portal-api:3000
+      # Orígenes de los sistemas (form-action del CSP), separados por espacio.
+      FORM_ACTION_ORIGINS: ${FORM_ACTION_ORIGINS:-https://ecodatos.ecologia.misiones.gob.ar}
+    # portal-web sirve en la RAÍZ del contenedor: el nginx de ecodatos quita el prefijo /portal antes de proxear.
+    # No publica puerto al host: el nginx de ecodatos lo encuentra como "portal-web" en la red "supabase".
+    # Para probar en local sin ecodatos, usar docker-compose.override.yml con "ports: ['127.0.0.1:8080:80']".
+    networks:
+      - portal_net
+      - supabase
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/.well-known/jwks.json"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+networks:
+  # Red privada del portal; sale a internet por el NAT de Docker (portal-api consulta a los sistemas).
+  portal_net:
+    name: portal_net
+  # Red de ecodatos (ya existe en la VM; la crea su docker-compose).
+  supabase:
+    name: supabase
+    external: true
+
+volumes:
+  portal_db:
+    name: portal_db

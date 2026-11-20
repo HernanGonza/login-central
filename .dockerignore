@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+.git
+.dev
+.claude
+graft
+secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.pdf
+web/dist
