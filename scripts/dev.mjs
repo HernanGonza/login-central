@@ -12,7 +12,11 @@ import { generateKeyPairSync } from 'node:crypto';
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dev = join(raiz, '.dev');
 const pgDir = join(dev, 'pg');
-const PG_PUERTO = 54329;
+// Puertos configurables para convivir con otros proyectos (la Wiki real usa 3000/5173/54329). Ver `npm run dev:wiki`.
+const PG_PUERTO = Number(process.env.PG_PUERTO || 54329);
+const API_PUERTO = process.env.PORTAL_PUERTO_API || '3000';
+const WEB_PUERTO = process.env.PORTAL_PUERTO_WEB || '5173';
+const WIKI_REAL = (process.env.WIKI_REAL_URL || '').replace(/\/$/, '');   // ej. http://localhost:5173 (Wiki real en dev)
 const DB = `postgres://dev@127.0.0.1:${PG_PUERTO}/portal`;
 mkdirSync(dev, { recursive: true });
 
@@ -48,10 +52,11 @@ if (!existsSync(clavePath)) {
   writeFileSync(clavePath, privateKey, { mode: 0o600 });
 }
 
-const PORTAL = 'http://localhost:3000';
+const PORTAL = `http://localhost:${API_PUERTO}`;
+const PORTAL_WEB = `http://localhost:${WEB_PUERTO}`;
 const envPortal = {
-  ...process.env, NODE_ENV: 'development', PORT: '3000', DATABASE_URL: DB,
-  SSO_ISSUER: PORTAL, PORTAL_URL: 'http://localhost:5173', SSO_PRIVATE_KEY_PATH: clavePath,
+  ...process.env, NODE_ENV: 'development', PORT: API_PUERTO, DATABASE_URL: DB,
+  SSO_ISSUER: PORTAL, PORTAL_URL: PORTAL_WEB, SSO_PRIVATE_KEY_PATH: clavePath,
   ALTCHA_HMAC_KEY: 'clave-hmac-DEV-no-usar-en-produccion', COOKIE_SECURE: 'false',
   PERSONAL_REGISTRO_URL: 'https://personal.invalid/registro', PERSONAL_RECUPERO_URL: 'https://personal.invalid/recupero',
   LIMITE_POR_PAR: '50', LIMITE_POR_CORREO: '100', LIMITE_POR_IP: '200',
@@ -69,6 +74,14 @@ let extras = [];
 try { extras = JSON.parse(readFileSync(join(dev, 'usuarios-extra.json'), 'utf8')); } catch { /* sin extras */ }
 const sumar = (id, rol) => extras.filter((u) => (u.sistemas || []).includes(id)).map((u) => `,${u.email.toLowerCase()}:${rol}`).join('');
 
+// Wiki REAL: apunta la fila 'wiki' del portal a la Wiki local (la semilla no pisa filas existentes).
+if (WIKI_REAL) {
+  const r = pg('psql', ['-h', '127.0.0.1', '-p', String(PG_PUERTO), '-U', 'dev', '-d', 'portal', '-v', 'ON_ERROR_STOP=1', '-c',
+    `UPDATE sso_sistemas SET url_login='${WIKI_REAL}/sso/login', url_acceso='${WIKI_REAL}/sso/acceso' WHERE id='wiki'`]);
+  if (r.status !== 0) { console.error(r.stderr); process.exit(1); }
+  console.log(`[dev] sistema "wiki" del portal -> Wiki real en ${WIKI_REAL}`);
+}
+
 // 4) Procesos
 const hijos = [];
 function lanzar(nombre, cmd, args, cwd, env) {
@@ -81,16 +94,16 @@ function lanzar(nombre, cmd, args, cwd, env) {
 const jwks = `${PORTAL}/.well-known/jwks.json`;
 const falso = (id, puerto, usuarios) => lanzar(`sf-${id}`, process.execPath, ['src/servidor.mjs'], join(raiz, 'sistema-falso'), {
   ...process.env, PORT: String(puerto), SSO_ISSUER: PORTAL, SSO_AUDIENCE: id, SSO_JWKS_URL: jwks,
-  PORTAL_URL: 'http://localhost:5173', COOKIE_SECURE: 'false', SF_CONTROL: '1', SF_USUARIOS: usuarios,
+  PORTAL_URL: PORTAL_WEB, COOKIE_SECURE: 'false', SF_CONTROL: '1', SF_USUARIOS: usuarios,
 });
 lanzar('portal', process.execPath, ['src/index.js'], join(raiz, 'server'), envPortal);
 falso('personal', 4101, 'ana.perez@ecologia.test:admin,luis.gomez@ecologia.test:usuario,repetido@ecologia.test:usuario' + sumar('personal', 'admin'));
-falso('wiki', 4102, 'ana.perez@ecologia.test:admin,luis.gomez@ecologia.test:lector' + sumar('wiki', 'admin'));
+if (!WIKI_REAL) falso('wiki', 4102, 'ana.perez@ecologia.test:admin,luis.gomez@ecologia.test:lector' + sumar('wiki', 'admin'));
 falso('pesca', 4103, 'ana.perez@ecologia.test:inspector' + sumar('pesca', 'inspector'));   // luis NO está: su tarjeta de Pesca no aparece
-lanzar('web', process.execPath, [join(raiz, 'node_modules/vite/bin/vite.js'), '--port', '5173', '--strictPort', '--host', 'localhost'], join(raiz, 'web'), { ...process.env, API_URL: PORTAL });
+lanzar('web', process.execPath, [join(raiz, 'node_modules/vite/bin/vite.js'), '--port', WEB_PUERTO, '--strictPort', '--host', 'localhost'], join(raiz, 'web'), { ...process.env, API_URL: PORTAL });
 
 console.log(`
-  Portal:   http://localhost:5173
+  Portal:   ${PORTAL_WEB}
   Usuarios de prueba (clave: clave-de-prueba):
     ana.perez@ecologia.test   -> Personal, Wiki (admin) y Pesca
     luis.gomez@ecologia.test  -> Personal y Wiki (lector); SIN tarjeta de Pesca

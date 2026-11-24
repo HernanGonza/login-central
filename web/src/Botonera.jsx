@@ -49,14 +49,26 @@ export default function Botonera({ api, sesion, enviar, onSalir }) {
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  const abrir = useCallback(async (id) => {
+  // nueva=true (clic del usuario): cada sistema se abre en su propia pestaña y la botonera queda abierta.
+  // La pestaña se abre ANTES del await (si no, el navegador la toma por ventana emergente y la bloquea).
+  // Nombre fijo por sistema: un segundo clic reutiliza su pestaña. Sin opener: el sistema no controla al portal.
+  // `?volver` (nueva=false) no es un clic: se queda en la misma pestaña.
+  const abrir = useCallback(async (id, nueva = false) => {
     setError(null);
+    const destino = nueva ? `sso-${id}` : undefined;
+    let ventana = null;
+    if (destino) {
+      try { ventana = window.open('', destino); if (ventana) ventana.opener = null; } catch { ventana = null; }
+    }
+    const fallo = () => { try { ventana?.close(); } catch { /* nada */ } setError('No pudimos abrir el sistema. Probá de nuevo.'); };
     try {
       const r = await api.entrar(id);
-      if (!r.ok || !r.data?.token) return setError('No pudimos abrir el sistema. Probá de nuevo.');
-      enviar(r.data.url_login, r.data.token);
+      if (!r.ok || !r.data?.token) return fallo();
+      // Si el navegador bloqueó la pestaña, se abre en la actual (como antes).
+      if (ventana) enviar(r.data.url_login, r.data.token, destino);
+      else enviar(r.data.url_login, r.data.token);
     } catch {
-      setError('No pudimos abrir el sistema. Probá de nuevo.');
+      fallo();
     }
   }, [api, enviar]);
 
@@ -103,7 +115,7 @@ export default function Botonera({ api, sesion, enviar, onSalir }) {
                 type="button"
                 className={`tarjeta${gris ? ' gris' : ''}`}
                 disabled={gris}
-                onClick={() => abrir(t.id)}
+                onClick={() => abrir(t.id, true)}
               >
                 <Icono icono={t.icono} />
                 <span className="nombre">{titulo}</span>

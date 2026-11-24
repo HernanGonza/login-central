@@ -10,7 +10,8 @@
   ],
   "scripts": {
     "vectores": "node docs/sso/vectores/generar.mjs",
-    "dev": "node scripts/dev.mjs"
+    "dev": "node scripts/dev.mjs",
+    "dev:wiki": "PORTAL_PUERTO_API=3200 PORTAL_PUERTO_WEB=5273 PG_PUERTO=54339 WIKI_REAL_URL=http://localhost:5173 node scripts/dev.mjs"
   },
   "devDependencies": {
     "jose": "^5.10.0"

@@ -46,7 +46,11 @@ async function completarIngreso(email, clave = 'clave-prueba', conCaptcha = true
   await user.click(screen.getByRole('button', { name: 'Ingresar' }));
 }
 
-beforeEach(() => sessionStorage.clear());
+let abrirVentana;
+beforeEach(() => {
+  sessionStorage.clear();
+  abrirVentana = vi.spyOn(window, 'open').mockImplementation(() => ({ opener: 'x', close: vi.fn() }));
+});
 
 describe('Ingreso', () => {
   it('muestra el texto del panel y el formulario', async () => {
@@ -190,8 +194,32 @@ describe('Botonera', () => {
     const { api } = crearApi({ estado: conSesion() });
     render(<App api={api} enviar={enviar} />);
     await userEvent.setup().click(await screen.findByText('Wiki · administrador'));
-    await waitFor(() => expect(enviar).toHaveBeenCalledWith('https://wiki.example/sso/login', 'pase-wiki'));
+    await waitFor(() => expect(enviar).toHaveBeenCalledWith('https://wiki.example/sso/login', 'pase-wiki', 'sso-wiki'));
+    expect(abrirVentana).toHaveBeenCalledWith('', 'sso-wiki');
+    expect(abrirVentana.mock.results[0].value.opener).toBeNull();
     expect(window.location.href).not.toContain('pase-wiki');
+  });
+
+  it('si el navegador bloquea la pestaña nueva, abre en la actual', async () => {
+    abrirVentana.mockImplementation(() => null);
+    const enviar = vi.fn();
+    const { api } = crearApi({ estado: conSesion() });
+    render(<App api={api} enviar={enviar} />);
+    await userEvent.setup().click(await screen.findByText('Wiki · administrador'));
+    await waitFor(() => expect(enviar).toHaveBeenCalledWith('https://wiki.example/sso/login', 'pase-wiki'));
+  });
+
+  it('si falla entrar, cierra la pestaña en blanco y avisa', async () => {
+    const ventana = { opener: 'x', close: vi.fn() };
+    abrirVentana.mockImplementation(() => ventana);
+    const enviar = vi.fn();
+    const { api } = crearApi({ estado: conSesion() });
+    api.entrar.mockRejectedValue(new Error('x'));
+    render(<App api={api} enviar={enviar} />);
+    await userEvent.setup().click(await screen.findByText('Wiki · administrador'));
+    await screen.findByText(/No pudimos abrir el sistema/);
+    expect(ventana.close).toHaveBeenCalled();
+    expect(enviar).not.toHaveBeenCalled();
   });
 
   it('?volver con id válido abre ese sistema una sola vez', async () => {
@@ -199,6 +227,7 @@ describe('Botonera', () => {
     const { api } = crearApi({ estado: conSesion() });
     render(<App api={api} enviar={enviar} volver="wiki" />);
     await waitFor(() => expect(enviar).toHaveBeenCalledWith('https://wiki.example/sso/login', 'pase-wiki'));
+    expect(abrirVentana).not.toHaveBeenCalled();
     await screen.findByText('Pesca');
     expect(api.entrar).toHaveBeenCalledTimes(1);
   });

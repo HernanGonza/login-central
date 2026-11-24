@@ -37,13 +37,15 @@ export const api = {
 };
 
 // POST autoenviado por formulario oculto: el pase nunca viaja en la URL.
-export function enviarPost(url_login, token) {
+// `destino`: nombre de una pestaña ya abierta (window.open) a la que apuntar el POST; sin él, navega la pestaña actual.
+export function enviarPost(url_login, token, destino) {
   let u;
   try { u = new URL(url_login); } catch { throw new Error('url_login inválida'); }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('url_login debe ser http: o https:');
   const f = document.createElement('form');
   f.method = 'POST';
   f.action = u.href;
+  if (destino) f.target = destino;
   f.style.display = 'none';
   const i = document.createElement('input');
   i.type = 'hidden';
@@ -52,4 +54,5 @@ export function enviarPost(url_login, token) {
   f.appendChild(i);
   document.body.appendChild(f);
   f.submit();
+  f.remove();
 }
